@@ -1,3 +1,12 @@
+terraform {
+  backend "s3" {
+    bucket = "terraform-statefile-pm29"
+    key = "execution/terraform.tfstate"
+    region = "us-east-1"
+    #use_lockfile = true
+  }
+}
+
 # Provider Configuration
 # Specifies the AWS provider and region for Terraform to manage resources in.
 provider "aws" {
