@@ -1,10 +1,10 @@
 terraform {
-  Required_version=">=1.11.0"
+  required_version=">=1.11.0"
 
   backend "s3" {
-    bucket = "terraform-statefile-pm29” # S3 bucket for state storage
-    key = "execution/terraform.tfstate” # State file path in the bucket
-    region = "us-east-1” # AWS region
+    bucket = "terraform-statefile-pm29"
+    key = "execution/terraform.tfstate"
+    region = "us-east-1"
     encrypt = true
     use_lockfile = true
   }
