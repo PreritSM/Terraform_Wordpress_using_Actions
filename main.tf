@@ -1,3 +1,15 @@
+terraform {
+  Required_version=">=1.11.0"
+
+  backend "s3" {
+    bucket = "terraform-statefile-pm29” # S3 bucket for state storage
+    key = "execution/terraform.tfstate” # State file path in the bucket
+    region = "us-east-1” # AWS region
+    encrypt = true
+    use_lockfile = true
+  }
+}
+
 # Security Group to allow HTTP and SSH traffic
 resource "aws_security_group" "web_sg" {
   name        = "allow_http_ssh"
@@ -52,6 +64,7 @@ resource "aws_instance" "my_server" {
      Name = "my ec2"
    }                  
 }
+
 
 output "public_ip_addr" {
 	value = aws_instance.my_server.public_ip
