@@ -1,72 +1,91 @@
-terraform {
-  backend "s3" {
-    bucket = "terraform-statefile-pm29"
-    key = "execution/terraform.tfstate"
-    region = "us-east-1"
-    use_lockfile = true
-  }
-}
-
-# Security Group to allow HTTP and SSH traffic
-resource "aws_security_group" "web_sg" {
-  name        = "allow_http_ssh"
-  description = "Allow HTTP and SSH inbound traffic"
-
-  # HTTP access from anywhere
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # SSH access (Restrict this to your IP for better security)
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Outbound rules (Required to download WordPress/Updates)
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-
-# Configure the AWS Provider
+# Provider Configuration
+# Specifies the AWS provider and region for Terraform to manage resources in.
 provider "aws" {
-  region = "us-east-1"  # Set AWS region to US East 1 (N. Virginia)
+  region = "us-east-1"
 }
 
-# Local variables block for configuration values
-locals {
-    aws_key = "AWS_PM_KEYS"   # SSH key pair name for EC2 instance access
+# Data source to fetch the latest Amazon Linux 2023 AMI
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023*"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
 }
 
-# EC2 instance resource definition
-resource "aws_instance" "my_server" {
-   ami           = data.aws_ami.amazonlinux.id  # Use the AMI ID from the data source
-   instance_type = var.instance_type            # Use the instance type from variables
-   key_name      = "${local.aws_key}"          # Specify the SSH key pair name
-   user_data	 = file("wp_install.sh")
-   vpc_security_group_ids = [aws_security_group.web_sg.id]
-
-   # Add tags to the EC2 instance for identification
-   tags = {
-     Name = "my ec2"
-   }                  
+# Module: VPC
+# Creates the Virtual Private Cloud for the WordPress infrastructure
+module "vpc" {
+  source = "./modules/vpc"
 }
 
-
-output "public_ip_addr" {
-	value = aws_instance.my_server.public_ip
+# Module: Networking (IGW & Route Tables)
+# Creates the Internet Gateway and public route table
+module "networking" {
+  source = "./modules/networking"
+  vpc_id = module.vpc.vpc_id
 }
 
+# Module: Subnets
+# Creates public and private subnets and associates them with route tables
+module "subnets" {
+  source         = "./modules/subnets"
+  vpc_id         = module.vpc.vpc_id
+  route_table_id = module.networking.route_table_id
+}
 
+# Module: Security Groups
+# Creates security groups for EC2 and RDS instances
+module "security_groups" {
+  source = "./modules/security_groups"
+  vpc_id = module.vpc.vpc_id
+}
 
+# Module: RDS
+# Creates the MySQL RDS instance for WordPress
+module "rds" {
+  source            = "./modules/rds"
+  public_subnet_id  = module.subnets.public_subnet_id
+  private_subnet_id = module.subnets.private_subnet_id
+  rds_sg_id         = module.security_groups.rds_sg_id
+  db_username       = var.db_username
+  db_password       = var.db_password
+}
 
+# Module: EC2
+# Creates the EC2 instance for WordPress with user data configuration
+module "ec2" {
+  source           = "./modules/ec2"
+  public_subnet_id = module.subnets.public_subnet_id
+  ec2_sg_id        = module.security_groups.ec2_sg_id
+  key_name         = var.key_name
+  db_username      = var.db_username
+  db_password      = var.db_password
+  rds_endpoint     = module.rds.rds_endpoint
+  ami_id           = data.aws_ami.amazon_linux_2023.id
+}
+
+# Outputs
+# Outputs the public IP of the EC2 instance and the RDS endpoint
+
+output "ec2_public_ip" {
+  value = module.ec2.public_ip
+}
+
+output "rds_endpoint" {
+  value = module.rds.rds_endpoint
+}
