@@ -3,7 +3,6 @@ terraform {
     bucket = "terraform-statefile-pm29"
     key = "execution/terraform.tfstate"
     region = "us-east-1"
-    encrypt = true
     use_lockfile = true
   }
 }
